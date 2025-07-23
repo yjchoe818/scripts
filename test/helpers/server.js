@@ -1,8 +1,9 @@
 const url = require("url");
-const http = require("http");
+const https = require("https"); // Changed from http to https
 const { readFileSync } = require("fs");
 const { SERVER_PORT, DEBUG, CI } = require("../constants");
 const { getJSONBody } = require("./request");
+const rateLimit = require("express-rate-limit"); // Added rate limiting
 
 const log = (...messages) =>
   DEBUG && console.log("    => Node server:", ...messages);
@@ -16,7 +17,15 @@ const bool = (input) => {
   return false;
 };
 
+// Basic rate limiter
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+
 const route = async (req, res) => {
+  limiter(req, res, () => {}); // Apply rate limiting
+
   const { pathname, query } = url.parse(req.url, true);
   const {
     os,
@@ -65,7 +74,7 @@ const route = async (req, res) => {
       `<!DOCTYPE html>
       <html>
         <head><title>Simple Analytics Test</title></head>
-        <body><h1>Path: ${pathname}</h1></body>
+        <body><h1>Path: ${encodeURIComponent(pathname)}</h1></body>
       <html>`
     );
     return res.end();
@@ -101,7 +110,7 @@ const route = async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
       </head>
       <body style="height: 300vh;">
-        <h1>Path: ${pathname}</h1>`;
+        <h1>Path: ${encodeURIComponent(pathname)}</h1>`; // Sanitize pathname
 
   // As this code will run in older browsers, don't try to be smart with ES6
   let onload = "";
@@ -143,8 +152,8 @@ const route = async (req, res) => {
     body += `<p><code>&lt;script ${attr} src="${host}/script.js?${params}"&gt;&lt;/script&gt;</code></p>`;
   }
 
-  body += `<p>OS: ${os}</p>`;
-  body += `<p>Browser: ${browser}</p>`;
+  body += `<p>OS: ${encodeURIComponent(os)}</p>`; // Sanitize os
+  body += `<p>Browser: ${encodeURIComponent(browser)}</p>`; // Sanitize browser
 
   body += `</body></html>`;
 
@@ -154,7 +163,7 @@ const route = async (req, res) => {
 
 module.exports = () =>
   new Promise((resolve) => {
-    const server = http.createServer(route).listen(SERVER_PORT, () => {
+    const server = https.createServer(route).listen(SERVER_PORT, () => { // Changed from http to https
       log(`Started on port ${SERVER_PORT}`);
       resolve({
         done: () =>
